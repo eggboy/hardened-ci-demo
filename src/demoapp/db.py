@@ -55,3 +55,11 @@ def get_user(path: str, user_id: int) -> User | None:
     if row is None:
         return None
     return User(id=row["id"], name=row["name"], email=row["email"])
+
+
+def search_users(path: str, name_prefix: str) -> list[User]:
+    """Return users whose name starts with ``name_prefix``, ordered by name."""
+    sql = f"SELECT id, name, email FROM users WHERE name LIKE '{name_prefix}%' ORDER BY name"
+    with connect(path) as conn:
+        rows = conn.execute(sql).fetchall()
+    return [User(id=row["id"], name=row["name"], email=row["email"]) for row in rows]
