@@ -10,7 +10,7 @@ jobs:
   # Google CodeMender: scans the code this pull request changes, fails on CRITICAL/HIGH findings,
   # uploads SARIF to code scanning, and opens a fix pull request when the scan fails.
   codemender:
-    uses: eggboy/codemender-action/.github/workflows/codemender.yml@ab1c4f21bc313026c9942c6c2d284f95b0e64b15 # main 2026-11-11
+    uses: eggboy/codemender-action/.github/workflows/codemender.yml@00ef7f9e22972e6b86003be06608a40e0a354835 # main 2026-11-11
     permissions:
       contents: write
       pull-requests: write
