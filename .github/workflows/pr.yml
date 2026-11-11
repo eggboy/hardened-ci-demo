@@ -1,0 +1,53 @@
+name: Pull request checks
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  # Google CodeMender: scans the code this pull request changes, fails on CRITICAL/HIGH findings,
+  # uploads SARIF to code scanning, and opens a fix pull request when the scan fails.
+  codemender:
+    uses: eggboy/codemender-action/.github/workflows/codemender.yml@ab1c4f21bc313026c9942c6c2d284f95b0e64b15 # main 2026-11-11
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+      security-events: write
+      actions: read
+    secrets:
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
+      GCP_WIF_SERVICE_ACCOUNT: ${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}
+
+  # GitHub dependency review: fails the check when the pull request adds or upgrades to a
+  # dependency with a known high-severity vulnerability.
+  dependency-review:
+    name: Dependency review
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+
+  tests:
+    name: Tests
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: make build
+      - run: make lint
+      - run: make test
