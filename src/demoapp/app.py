@@ -151,7 +151,7 @@ def create_app(
         if tenant is None:
             abort(404)
         sig_header = request.headers.get("X-Webhook-Signature")
-        if sig_header and not webhooks.verify_webhook_signature(tenant.webhook_secret, raw_body, sig_header):
+        if not sig_header or not webhooks.verify_webhook_signature(tenant.webhook_secret, raw_body, sig_header):
             logger.warning("Rejected invalid payment webhook signature for tenant %s", tenant_id)
             abort(401)
         updated = db.mark_invoice_status_and_plan(
