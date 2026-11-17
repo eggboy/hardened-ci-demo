@@ -1,6 +1,7 @@
 """Flask application factory for the multi-tenant workspace and invoice service."""
 
 import logging
+import secrets
 
 from flask import Flask, abort, jsonify, request
 from flask.typing import ResponseReturnValue
@@ -167,5 +168,14 @@ def create_app(
         refreshed = db.get_tenant(db_path, tenant_id)
         current_plan = refreshed.plan if refreshed is not None else tenant.plan
         return jsonify(invoice=updated.to_dict(), plan=current_plan)
+
+    @app.post("/tenant/webhook-secret")
+    def rotate_tenant_webhook_secret() -> ResponseReturnValue:
+        principal = auth.authenticate_request(db_path, request.headers.get("Authorization"))
+        new_secret = secrets.token_hex(32)
+        if not db.rotate_webhook_secret(db_path, principal.tenant_id, new_secret):
+            abort(404)
+        logger.info("Rotated webhook signing secret for tenant %s", principal.tenant_id)
+        return jsonify(tenant_id=principal.tenant_id, webhook_secret=new_secret)
 
     return app

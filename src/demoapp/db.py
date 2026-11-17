@@ -117,6 +117,17 @@ def get_tenant(path: str, tenant_id: str) -> Tenant | None:
     )
 
 
+def rotate_webhook_secret(path: str, tenant_id: str, new_secret: str) -> bool:
+    """Replace the HMAC signing secret for a tenant and return True when updated."""
+    with connect(path) as conn:
+        cursor = conn.execute(
+            "UPDATE tenants SET webhook_secret = ? WHERE id = ?",
+            (new_secret, tenant_id),
+        )
+        conn.commit()
+        return int(cursor.rowcount or 0) > 0
+
+
 def add_user(path: str, tenant_id: str, name: str, email: str, role: str) -> int:
     """Insert a tenant user with role 'admin' or 'member' and return its ID."""
     with connect(path) as conn:
