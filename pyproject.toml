@@ -1,11 +1,12 @@
 [project]
 name = "demoapp"
-version = "0.1.0"
-description = "Small Flask service used to demonstrate a hardened CI pipeline with CodeMender."
+version = "0.2.0"
+description = "Multi-tenant B2B workspace and invoice service for a hardened CI pipeline with CodeMender."
 requires-python = ">=3.12"
 dependencies = [
     "flask==3.1.3",
     "python-dotenv==1.2.4",
+    "requests==2.34.2",
 ]
 
 [project.optional-dependencies]
@@ -24,11 +25,15 @@ where = ["src"]
 
 [tool.ruff]
 line-length = 120
+src = ["src", "tests"]
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
+select = ["E", "F", "I", "UP", "B", "S"]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S105", "S106"]
 
 [tool.pytest.ini_options]
+pythonpath = [".", "tests"]
 testpaths = ["tests"]
