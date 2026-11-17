@@ -309,5 +309,3 @@ def test_delete_invoice_prevents_cross_tenant_access(
         headers=_auth_headers(seeded_world.alpha_admin_token),
     )
     assert alpha_resp.status_code == 200
-
-
