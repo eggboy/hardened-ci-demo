@@ -101,6 +101,32 @@ def test_invoice_audit_report_summarizes_tenant_totals(
     assert report["total_cents"] == 125000
 
 
+def test_invoice_audit_report_allows_matching_tenant_id(
+    client: FlaskClient,
+    seeded_world: SeededWorld,
+) -> None:
+    response = client.get(
+        "/reports/invoices?tenant_id=tenant-alpha",
+        headers=_auth_headers(seeded_world.alpha_admin_token),
+    )
+    assert response.status_code == 200
+    report = response.get_json()
+    assert report["tenant_id"] == "tenant-alpha"
+    assert report["count"] == 1
+    assert report["total_cents"] == 125000
+
+
+def test_invoice_audit_report_rejects_cross_tenant_access(
+    client: FlaskClient,
+    seeded_world: SeededWorld,
+) -> None:
+    response = client.get(
+        "/reports/invoices?tenant_id=tenant-beta",
+        headers=_auth_headers(seeded_world.alpha_admin_token),
+    )
+    assert response.status_code == 403
+
+
 def test_export_invoice_delivers_payload(
     client: FlaskClient,
     seeded_world: SeededWorld,

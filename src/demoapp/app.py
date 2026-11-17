@@ -115,6 +115,13 @@ def create_app(
     def invoice_audit_report() -> ResponseReturnValue:
         principal = auth.authenticate_request(db_path, request.headers.get("Authorization"))
         target_tenant = request.args.get("tenant_id") or principal.tenant_id
+        if target_tenant != principal.tenant_id:
+            logger.warning(
+                "Denied cross-tenant invoice report access for tenant %s by principal %s",
+                target_tenant,
+                principal.user_id,
+            )
+            abort(403)
         invoices = db.list_invoices(db_path, target_tenant)
         total_cents = sum(inv.amount_cents for inv in invoices)
         return jsonify(
