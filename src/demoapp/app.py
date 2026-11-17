@@ -82,6 +82,7 @@ def create_app(
     @app.delete("/invoices/<int:invoice_id>")
     def delete_invoice(invoice_id: int) -> ResponseReturnValue:
         principal = auth.authenticate_request(db_path, request.headers.get("Authorization"))
+        auth.require_admin(principal)
         if not db.delete_invoice_by_id(db_path, principal.tenant_id, invoice_id):
             abort(404)
         cache.invalidate(tenant_key(principal.tenant_id, "invoice", invoice_id))

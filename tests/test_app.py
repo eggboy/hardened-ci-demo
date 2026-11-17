@@ -309,3 +309,17 @@ def test_delete_invoice_prevents_cross_tenant_access(
         headers=_auth_headers(seeded_world.alpha_admin_token),
     )
     assert alpha_resp.status_code == 200
+
+
+def test_member_cannot_delete_invoice(client: FlaskClient, seeded_world: SeededWorld) -> None:
+    member_resp = client.delete(
+        f"/invoices/{seeded_world.alpha_invoice_id}",
+        headers=_auth_headers(seeded_world.alpha_member_token),
+    )
+    assert member_resp.status_code == 403
+
+    get_resp = client.get(
+        f"/invoices/{seeded_world.alpha_invoice_id}",
+        headers=_auth_headers(seeded_world.alpha_member_token),
+    )
+    assert get_resp.status_code == 200
