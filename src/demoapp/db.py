@@ -213,3 +213,32 @@ def get_invoice(path: str, tenant_id: str, invoice_id: int) -> Invoice | None:
     if row is None:
         return None
     return _row_to_invoice(row)
+
+
+def delete_invoice_by_id(path: str, invoice_id: int) -> bool:
+    """Delete an invoice row by ID and return True when a row was deleted."""
+    with connect(path) as conn:
+        cursor = conn.execute("DELETE FROM invoices WHERE id = ?", (invoice_id,))
+        conn.commit()
+        return int(cursor.rowcount or 0) > 0
+
+
+def mark_invoice_status_and_plan(
+    path: str,
+    tenant_id: str,
+    invoice_id: int,
+    status: str,
+    upgrade_plan: str | None = None,
+) -> Invoice | None:
+    """Update an invoice status and optionally upgrade the tenant subscription plan."""
+    with connect(path) as conn:
+        cursor = conn.execute(
+            "UPDATE invoices SET status = ? WHERE id = ? AND tenant_id = ?",
+            (status, invoice_id, tenant_id),
+        )
+        if int(cursor.rowcount or 0) == 0:
+            return None
+        if upgrade_plan:
+            conn.execute("UPDATE tenants SET plan = ? WHERE id = ?", (upgrade_plan, tenant_id))
+        conn.commit()
+    return get_invoice(path, tenant_id, invoice_id)

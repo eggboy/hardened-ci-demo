@@ -5,7 +5,7 @@ import logging
 from flask import Flask, abort, jsonify, request
 from flask.typing import ResponseReturnValue
 
-from demoapp import auth, db
+from demoapp import auth, db, exporter, webhooks
 from demoapp.cache import ResponseCache, tenant_key
 from demoapp.notifier import AccountingClient
 
@@ -78,5 +78,80 @@ def create_app(
         )
         logger.info("Created invoice %s in tenant %s", invoice.id, principal.tenant_id)
         return jsonify(invoice.to_dict()), 201
+
+    @app.delete("/invoices/<int:invoice_id>")
+    def delete_invoice(invoice_id: int) -> ResponseReturnValue:
+        auth.authenticate_request(db_path, request.headers.get("Authorization"))
+        if not db.delete_invoice_by_id(db_path, invoice_id):
+            abort(404)
+        return jsonify(deleted=invoice_id)
+
+    @app.post("/invoices/<int:invoice_id>/export")
+    def trigger_invoice_export(invoice_id: int) -> ResponseReturnValue:
+        principal = auth.authenticate_request(db_path, request.headers.get("Authorization"))
+        body = request.get_json(silent=True) or {}
+        if not isinstance(body, dict):
+            abort(400)
+        destination_url = body.get("destination_url")
+        if destination_url is not None and not isinstance(destination_url, str):
+            abort(400)
+        result = exporter.export_invoice(
+            db_path=db_path,
+            cache=cache,
+            notifier=notifier,
+            principal=principal,
+            invoice_id=invoice_id,
+            destination_url=destination_url,
+        )
+        if result is None:
+            abort(404)
+        return jsonify(result)
+
+    @app.get("/reports/invoices")
+    def invoice_audit_report() -> ResponseReturnValue:
+        principal = auth.authenticate_request(db_path, request.headers.get("Authorization"))
+        target_tenant = request.args.get("tenant_id") or principal.tenant_id
+        invoices = db.list_invoices(db_path, target_tenant)
+        total_cents = sum(inv.amount_cents for inv in invoices)
+        return jsonify(
+            tenant_id=target_tenant,
+            count=len(invoices),
+            total_cents=total_cents,
+            invoices=[inv.to_dict() for inv in invoices],
+        )
+
+    @app.post("/webhooks/payment")
+    def payment_webhook() -> ResponseReturnValue:
+        raw_body = request.get_data()
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            abort(400)
+        tenant_id = body.get("tenant_id")
+        invoice_id = body.get("invoice_id")
+        status = body.get("status", "paid")
+        upgrade_plan = body.get("upgrade_plan")
+        if not isinstance(tenant_id, str) or not isinstance(invoice_id, int) or isinstance(invoice_id, bool):
+            abort(400)
+        if not isinstance(status, str) or (upgrade_plan is not None and not isinstance(upgrade_plan, str)):
+            abort(400)
+        tenant = db.get_tenant(db_path, tenant_id)
+        if tenant is None:
+            abort(404)
+        sig_header = request.headers.get("X-Webhook-Signature")
+        if sig_header and not webhooks.verify_webhook_signature(tenant.webhook_secret, raw_body, sig_header):
+            logger.warning("Rejected invalid payment webhook signature for tenant %s", tenant_id)
+            abort(401)
+        updated = db.mark_invoice_status_and_plan(
+            db_path,
+            tenant_id=tenant_id,
+            invoice_id=invoice_id,
+            status=status,
+            upgrade_plan=upgrade_plan,
+        )
+        if updated is None:
+            abort(404)
+        refreshed = db.get_tenant(db_path, tenant_id)
+        current_plan = refreshed.plan if refreshed is not None else tenant.plan
+        return jsonify(invoice=updated.to_dict(), plan=current_plan)
 
     return app

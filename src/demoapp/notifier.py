@@ -22,8 +22,12 @@ class AccountingClient:
 
     def send_export(self, payload: Mapping[str, object]) -> int:
         """Deliver an export payload to the configured HTTPS accounting endpoint."""
+        return self.deliver_to_url(self.endpoint_url, payload)
+
+    def deliver_to_url(self, destination_url: str, payload: Mapping[str, object]) -> int:
+        """Post an export payload to destination_url with the service API key."""
         response = requests.post(
-            self.endpoint_url,
+            destination_url,
             json=dict(payload),
             headers={"Authorization": f"Bearer {self.api_key}"},
             timeout=5,
