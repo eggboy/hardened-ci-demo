@@ -81,9 +81,11 @@ def create_app(
 
     @app.delete("/invoices/<int:invoice_id>")
     def delete_invoice(invoice_id: int) -> ResponseReturnValue:
-        auth.authenticate_request(db_path, request.headers.get("Authorization"))
-        if not db.delete_invoice_by_id(db_path, invoice_id):
+        principal = auth.authenticate_request(db_path, request.headers.get("Authorization"))
+        if not db.delete_invoice_by_id(db_path, principal.tenant_id, invoice_id):
             abort(404)
+        cache.invalidate(tenant_key(principal.tenant_id, "invoice", invoice_id))
+        cache.invalidate(tenant_key(principal.tenant_id, "export", invoice_id))
         return jsonify(deleted=invoice_id)
 
     @app.post("/invoices/<int:invoice_id>/export")

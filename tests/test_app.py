@@ -217,12 +217,24 @@ def test_export_invoice_accepts_valid_override_destination_url(
 
 
 def test_delete_invoice_removes_record(client: FlaskClient, seeded_world: SeededWorld) -> None:
+    get_before = client.get(
+        f"/invoices/{seeded_world.alpha_invoice_id}",
+        headers=_auth_headers(seeded_world.alpha_admin_token),
+    )
+    assert get_before.status_code == 200
+
     response = client.delete(
         f"/invoices/{seeded_world.alpha_invoice_id}",
         headers=_auth_headers(seeded_world.alpha_admin_token),
     )
     assert response.status_code == 200
     assert response.get_json() == {"deleted": seeded_world.alpha_invoice_id}
+
+    get_after = client.get(
+        f"/invoices/{seeded_world.alpha_invoice_id}",
+        headers=_auth_headers(seeded_world.alpha_admin_token),
+    )
+    assert get_after.status_code == 404
 
 
 def test_payment_webhook_accepts_valid_signature_and_rejects_bad_signature(
@@ -280,4 +292,22 @@ def test_export_invoice_prevents_cross_tenant_access(
         json={},
     )
     assert beta_resp.status_code == 404
+
+
+def test_delete_invoice_prevents_cross_tenant_access(
+    client: FlaskClient,
+    seeded_world: SeededWorld,
+) -> None:
+    beta_resp = client.delete(
+        f"/invoices/{seeded_world.alpha_invoice_id}",
+        headers=_auth_headers(seeded_world.beta_admin_token),
+    )
+    assert beta_resp.status_code == 404
+
+    alpha_resp = client.get(
+        f"/invoices/{seeded_world.alpha_invoice_id}",
+        headers=_auth_headers(seeded_world.alpha_admin_token),
+    )
+    assert alpha_resp.status_code == 200
+
 

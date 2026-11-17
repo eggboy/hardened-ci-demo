@@ -215,10 +215,13 @@ def get_invoice(path: str, tenant_id: str, invoice_id: int) -> Invoice | None:
     return _row_to_invoice(row)
 
 
-def delete_invoice_by_id(path: str, invoice_id: int) -> bool:
-    """Delete an invoice row by ID and return True when a row was deleted."""
+def delete_invoice_by_id(path: str, tenant_id: str, invoice_id: int) -> bool:
+    """Delete an invoice row scoped to both invoice ID and tenant ID and return True when a row was deleted."""
     with connect(path) as conn:
-        cursor = conn.execute("DELETE FROM invoices WHERE id = ?", (invoice_id,))
+        cursor = conn.execute(
+            "DELETE FROM invoices WHERE id = ? AND tenant_id = ?",
+            (invoice_id, tenant_id),
+        )
         conn.commit()
         return int(cursor.rowcount or 0) > 0
 
