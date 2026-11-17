@@ -323,3 +323,50 @@ def test_member_cannot_delete_invoice(client: FlaskClient, seeded_world: SeededW
         headers=_auth_headers(seeded_world.alpha_member_token),
     )
     assert get_resp.status_code == 200
+
+
+def test_rotate_webhook_secret_invalidates_previous_secret_and_accepts_new_secret(
+    client: FlaskClient,
+    seeded_world: SeededWorld,
+) -> None:
+    rotate_resp = client.post(
+        "/tenant/webhook-secret",
+        headers=_auth_headers(seeded_world.alpha_admin_token),
+    )
+    assert rotate_resp.status_code == 200
+    rotated = rotate_resp.get_json()
+    assert rotated["tenant_id"] == "tenant-alpha"
+    new_secret = rotated["webhook_secret"]
+    assert isinstance(new_secret, str) and len(new_secret) == 64
+    int(new_secret, 16)
+
+    event = {
+        "tenant_id": "tenant-alpha",
+        "invoice_id": seeded_world.alpha_invoice_id,
+        "status": "paid",
+    }
+    payload_bytes = json.dumps(event).encode("utf-8")
+
+    old_sig = webhooks.compute_signature(seeded_world.alpha_webhook_secret, payload_bytes)
+    stale_resp = client.post(
+        "/webhooks/payment",
+        data=payload_bytes,
+        content_type="application/json",
+        headers={"X-Webhook-Signature": old_sig},
+    )
+    assert stale_resp.status_code == 401
+
+    new_sig = webhooks.compute_signature(new_secret, payload_bytes)
+    fresh_resp = client.post(
+        "/webhooks/payment",
+        data=payload_bytes,
+        content_type="application/json",
+        headers={"X-Webhook-Signature": new_sig},
+    )
+    assert fresh_resp.status_code == 200
+    assert fresh_resp.get_json()["invoice"]["status"] == "paid"
+
+
+def test_rotate_webhook_secret_requires_authentication(client: FlaskClient) -> None:
+    response = client.post("/tenant/webhook-secret")
+    assert response.status_code == 401
