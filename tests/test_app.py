@@ -126,6 +126,70 @@ def test_export_invoice_delivers_payload(
     assert captured[0][0] == "https://accounting.internal.example/v1/exports"
 
 
+@pytest.mark.parametrize(
+    "bad_url",
+    [
+        "http://accounting.internal.example/v1/exports",
+        "https://attacker.com/collect",
+        "https://127.0.0.1:8000/export",
+        "http://127.0.0.1:8000/export",
+        "http://localhost:8080/export",
+        "http://169.254.169.254/latest/api/token",
+        "https://169.254.169.254/latest/meta-data",
+        "https://accounting.internal.example@attacker.com/steal",
+        "https://accounting.internal.example:8443/v1/exports",
+        "ftp://accounting.internal.example/v1/exports",
+        "javascript:alert(1)",
+        "",
+        "   ",
+        12345,
+    ],
+)
+def test_export_invoice_rejects_unsafe_destination_urls(
+    client: FlaskClient,
+    seeded_world: SeededWorld,
+    monkeypatch: pytest.MonkeyPatch,
+    bad_url: object,
+) -> None:
+    captured: list[tuple[str, object, object]] = []
+
+    def fake_post(url: str, **kwargs: object) -> _StubResponse:
+        captured.append((url, kwargs.get("json"), kwargs.get("headers")))
+        return _StubResponse(status_code=202)
+
+    monkeypatch.setattr(requests, "post", fake_post)
+    response = client.post(
+        f"/invoices/{seeded_world.alpha_invoice_id}/export",
+        headers=_auth_headers(seeded_world.alpha_admin_token),
+        json={"destination_url": bad_url},
+    )
+    assert response.status_code == 400
+    assert len(captured) == 0
+
+
+def test_export_invoice_accepts_valid_override_destination_url(
+    client: FlaskClient,
+    seeded_world: SeededWorld,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[tuple[str, object, object]] = []
+
+    def fake_post(url: str, **kwargs: object) -> _StubResponse:
+        captured.append((url, kwargs.get("json"), kwargs.get("headers")))
+        return _StubResponse(status_code=202)
+
+    monkeypatch.setattr(requests, "post", fake_post)
+    custom_url = "https://accounting.internal.example/v1/exports?batch=10"
+    response = client.post(
+        f"/invoices/{seeded_world.alpha_invoice_id}/export",
+        headers=_auth_headers(seeded_world.alpha_admin_token),
+        json={"destination_url": custom_url},
+    )
+    assert response.status_code == 200
+    assert len(captured) == 1
+    assert captured[0][0] == custom_url
+
+
 def test_delete_invoice_removes_record(client: FlaskClient, seeded_world: SeededWorld) -> None:
     response = client.delete(
         f"/invoices/{seeded_world.alpha_invoice_id}",

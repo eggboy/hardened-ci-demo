@@ -93,16 +93,20 @@ def create_app(
         if not isinstance(body, dict):
             abort(400)
         destination_url = body.get("destination_url")
-        if destination_url is not None and not isinstance(destination_url, str):
+        if destination_url is not None:
+            if not isinstance(destination_url, str) or not notifier.is_safe_destination(destination_url):
+                abort(400)
+        try:
+            result = exporter.export_invoice(
+                db_path=db_path,
+                cache=cache,
+                notifier=notifier,
+                principal=principal,
+                invoice_id=invoice_id,
+                destination_url=destination_url,
+            )
+        except ValueError:
             abort(400)
-        result = exporter.export_invoice(
-            db_path=db_path,
-            cache=cache,
-            notifier=notifier,
-            principal=principal,
-            invoice_id=invoice_id,
-            destination_url=destination_url,
-        )
         if result is None:
             abort(404)
         return jsonify(result)
