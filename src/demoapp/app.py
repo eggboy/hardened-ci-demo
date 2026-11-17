@@ -81,9 +81,11 @@ def create_app(
 
     @app.delete("/invoices/<int:invoice_id>")
     def delete_invoice(invoice_id: int) -> ResponseReturnValue:
-        auth.authenticate_request(db_path, request.headers.get("Authorization"))
-        if not db.delete_invoice_by_id(db_path, invoice_id):
+        principal = auth.authenticate_request(db_path, request.headers.get("Authorization"))
+        if not db.delete_invoice_by_id(db_path, principal.tenant_id, invoice_id):
             abort(404)
+        cache.invalidate(tenant_key(principal.tenant_id, "invoice", invoice_id))
+        cache.invalidate(tenant_key(principal.tenant_id, "export", invoice_id))
         return jsonify(deleted=invoice_id)
 
     @app.post("/invoices/<int:invoice_id>/export")
@@ -93,16 +95,20 @@ def create_app(
         if not isinstance(body, dict):
             abort(400)
         destination_url = body.get("destination_url")
-        if destination_url is not None and not isinstance(destination_url, str):
+        if destination_url is not None:
+            if not isinstance(destination_url, str) or not notifier.is_safe_destination(destination_url):
+                abort(400)
+        try:
+            result = exporter.export_invoice(
+                db_path=db_path,
+                cache=cache,
+                notifier=notifier,
+                principal=principal,
+                invoice_id=invoice_id,
+                destination_url=destination_url,
+            )
+        except ValueError:
             abort(400)
-        result = exporter.export_invoice(
-            db_path=db_path,
-            cache=cache,
-            notifier=notifier,
-            principal=principal,
-            invoice_id=invoice_id,
-            destination_url=destination_url,
-        )
         if result is None:
             abort(404)
         return jsonify(result)
@@ -111,6 +117,13 @@ def create_app(
     def invoice_audit_report() -> ResponseReturnValue:
         principal = auth.authenticate_request(db_path, request.headers.get("Authorization"))
         target_tenant = request.args.get("tenant_id") or principal.tenant_id
+        if target_tenant != principal.tenant_id:
+            logger.warning(
+                "Denied cross-tenant invoice report access for tenant %s by principal %s",
+                target_tenant,
+                principal.user_id,
+            )
+            abort(403)
         invoices = db.list_invoices(db_path, target_tenant)
         total_cents = sum(inv.amount_cents for inv in invoices)
         return jsonify(

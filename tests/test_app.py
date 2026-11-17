@@ -101,6 +101,32 @@ def test_invoice_audit_report_summarizes_tenant_totals(
     assert report["total_cents"] == 125000
 
 
+def test_invoice_audit_report_allows_matching_tenant_id(
+    client: FlaskClient,
+    seeded_world: SeededWorld,
+) -> None:
+    response = client.get(
+        "/reports/invoices?tenant_id=tenant-alpha",
+        headers=_auth_headers(seeded_world.alpha_admin_token),
+    )
+    assert response.status_code == 200
+    report = response.get_json()
+    assert report["tenant_id"] == "tenant-alpha"
+    assert report["count"] == 1
+    assert report["total_cents"] == 125000
+
+
+def test_invoice_audit_report_rejects_cross_tenant_access(
+    client: FlaskClient,
+    seeded_world: SeededWorld,
+) -> None:
+    response = client.get(
+        "/reports/invoices?tenant_id=tenant-beta",
+        headers=_auth_headers(seeded_world.alpha_admin_token),
+    )
+    assert response.status_code == 403
+
+
 def test_export_invoice_delivers_payload(
     client: FlaskClient,
     seeded_world: SeededWorld,
@@ -126,13 +152,89 @@ def test_export_invoice_delivers_payload(
     assert captured[0][0] == "https://accounting.internal.example/v1/exports"
 
 
+@pytest.mark.parametrize(
+    "bad_url",
+    [
+        "http://accounting.internal.example/v1/exports",
+        "https://attacker.com/collect",
+        "https://127.0.0.1:8000/export",
+        "http://127.0.0.1:8000/export",
+        "http://localhost:8080/export",
+        "http://169.254.169.254/latest/api/token",
+        "https://169.254.169.254/latest/meta-data",
+        "https://accounting.internal.example@attacker.com/steal",
+        "https://accounting.internal.example:8443/v1/exports",
+        "ftp://accounting.internal.example/v1/exports",
+        "javascript:alert(1)",
+        "",
+        "   ",
+        12345,
+    ],
+)
+def test_export_invoice_rejects_unsafe_destination_urls(
+    client: FlaskClient,
+    seeded_world: SeededWorld,
+    monkeypatch: pytest.MonkeyPatch,
+    bad_url: object,
+) -> None:
+    captured: list[tuple[str, object, object]] = []
+
+    def fake_post(url: str, **kwargs: object) -> _StubResponse:
+        captured.append((url, kwargs.get("json"), kwargs.get("headers")))
+        return _StubResponse(status_code=202)
+
+    monkeypatch.setattr(requests, "post", fake_post)
+    response = client.post(
+        f"/invoices/{seeded_world.alpha_invoice_id}/export",
+        headers=_auth_headers(seeded_world.alpha_admin_token),
+        json={"destination_url": bad_url},
+    )
+    assert response.status_code == 400
+    assert len(captured) == 0
+
+
+def test_export_invoice_accepts_valid_override_destination_url(
+    client: FlaskClient,
+    seeded_world: SeededWorld,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[tuple[str, object, object]] = []
+
+    def fake_post(url: str, **kwargs: object) -> _StubResponse:
+        captured.append((url, kwargs.get("json"), kwargs.get("headers")))
+        return _StubResponse(status_code=202)
+
+    monkeypatch.setattr(requests, "post", fake_post)
+    custom_url = "https://accounting.internal.example/v1/exports?batch=10"
+    response = client.post(
+        f"/invoices/{seeded_world.alpha_invoice_id}/export",
+        headers=_auth_headers(seeded_world.alpha_admin_token),
+        json={"destination_url": custom_url},
+    )
+    assert response.status_code == 200
+    assert len(captured) == 1
+    assert captured[0][0] == custom_url
+
+
 def test_delete_invoice_removes_record(client: FlaskClient, seeded_world: SeededWorld) -> None:
+    get_before = client.get(
+        f"/invoices/{seeded_world.alpha_invoice_id}",
+        headers=_auth_headers(seeded_world.alpha_admin_token),
+    )
+    assert get_before.status_code == 200
+
     response = client.delete(
         f"/invoices/{seeded_world.alpha_invoice_id}",
         headers=_auth_headers(seeded_world.alpha_admin_token),
     )
     assert response.status_code == 200
     assert response.get_json() == {"deleted": seeded_world.alpha_invoice_id}
+
+    get_after = client.get(
+        f"/invoices/{seeded_world.alpha_invoice_id}",
+        headers=_auth_headers(seeded_world.alpha_admin_token),
+    )
+    assert get_after.status_code == 404
 
 
 def test_payment_webhook_accepts_valid_signature_and_rejects_bad_signature(
@@ -166,3 +268,44 @@ def test_payment_webhook_accepts_valid_signature_and_rejects_bad_signature(
     result = good_response.get_json()
     assert result["invoice"]["status"] == "paid"
     assert result["plan"] == "enterprise"
+
+
+def test_export_invoice_prevents_cross_tenant_access(
+    client: FlaskClient,
+    seeded_world: SeededWorld,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_post(url: str, **kwargs: object) -> _StubResponse:
+        return _StubResponse(status_code=202)
+
+    monkeypatch.setattr(requests, "post", fake_post)
+    alpha_resp = client.post(
+        f"/invoices/{seeded_world.alpha_invoice_id}/export",
+        headers=_auth_headers(seeded_world.alpha_admin_token),
+        json={},
+    )
+    assert alpha_resp.status_code == 200
+
+    beta_resp = client.post(
+        f"/invoices/{seeded_world.alpha_invoice_id}/export",
+        headers=_auth_headers(seeded_world.beta_admin_token),
+        json={},
+    )
+    assert beta_resp.status_code == 404
+
+
+def test_delete_invoice_prevents_cross_tenant_access(
+    client: FlaskClient,
+    seeded_world: SeededWorld,
+) -> None:
+    beta_resp = client.delete(
+        f"/invoices/{seeded_world.alpha_invoice_id}",
+        headers=_auth_headers(seeded_world.beta_admin_token),
+    )
+    assert beta_resp.status_code == 404
+
+    alpha_resp = client.get(
+        f"/invoices/{seeded_world.alpha_invoice_id}",
+        headers=_auth_headers(seeded_world.alpha_admin_token),
+    )
+    assert alpha_resp.status_code == 200
