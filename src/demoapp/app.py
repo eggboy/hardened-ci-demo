@@ -172,6 +172,7 @@ def create_app(
     @app.post("/tenant/webhook-secret")
     def rotate_tenant_webhook_secret() -> ResponseReturnValue:
         principal = auth.authenticate_request(db_path, request.headers.get("Authorization"))
+        auth.require_admin(principal)
         new_secret = secrets.token_hex(32)
         if not db.rotate_webhook_secret(db_path, principal.tenant_id, new_secret):
             abort(404)
