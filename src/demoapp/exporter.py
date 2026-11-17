@@ -4,7 +4,7 @@ import logging
 
 from demoapp import db
 from demoapp.auth import Principal
-from demoapp.cache import ResponseCache
+from demoapp.cache import ResponseCache, tenant_key
 from demoapp.notifier import AccountingClient
 
 logger = logging.getLogger(__name__)
@@ -19,7 +19,7 @@ def export_invoice(
     destination_url: str | None = None,
 ) -> dict[str, object] | None:
     """Serialize an invoice and deliver it to the accounting endpoint or override URL."""
-    cache_key = f"export:{invoice_id}"
+    cache_key = tenant_key(principal.tenant_id, "export", invoice_id)
     cached = cache.get(cache_key)
     if cached is None:
         invoice = db.get_invoice(db_path, principal.tenant_id, invoice_id)

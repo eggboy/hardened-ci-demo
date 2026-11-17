@@ -256,3 +256,28 @@ def test_payment_webhook_accepts_valid_signature_and_rejects_bad_signature(
     result = good_response.get_json()
     assert result["invoice"]["status"] == "paid"
     assert result["plan"] == "enterprise"
+
+
+def test_export_invoice_prevents_cross_tenant_access(
+    client: FlaskClient,
+    seeded_world: SeededWorld,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_post(url: str, **kwargs: object) -> _StubResponse:
+        return _StubResponse(status_code=202)
+
+    monkeypatch.setattr(requests, "post", fake_post)
+    alpha_resp = client.post(
+        f"/invoices/{seeded_world.alpha_invoice_id}/export",
+        headers=_auth_headers(seeded_world.alpha_admin_token),
+        json={},
+    )
+    assert alpha_resp.status_code == 200
+
+    beta_resp = client.post(
+        f"/invoices/{seeded_world.alpha_invoice_id}/export",
+        headers=_auth_headers(seeded_world.beta_admin_token),
+        json={},
+    )
+    assert beta_resp.status_code == 404
+
