@@ -55,7 +55,7 @@ The integration is a single job in [`.github/workflows/pr.yml`](.github/workflow
 
 ```yaml
 codemender:
-  uses: eggboy/codemender-action/.github/workflows/codemender.yml@<commit-sha> # v0.21.0
+  uses: eggboy/codemender-action/.github/workflows/codemender.yml@<commit-sha> # v0.22.0
   with:
     fail-on: CRITICAL,HIGH,MEDIUM
     fail-check: false
