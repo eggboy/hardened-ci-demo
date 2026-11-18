@@ -11,7 +11,7 @@ jobs:
   # and exports CRITICAL,HIGH,MEDIUM findings to CodeMender autofix. The repository's Require
   # code scanning results ruleset (Medium or higher) enforces merge protection on pull requests.
   codemender:
-    uses: eggboy/codemender-action/.github/workflows/codemender.yml@a944a437f4fd9f4d34ed2a19d1f708dadd70cc54 # v0.21.0
+    uses: eggboy/codemender-action/.github/workflows/codemender.yml@6b1293fce004eb4ce44b05bebeca0f6a2173e90e # v0.22.0
     with:
       fail-on: CRITICAL,HIGH,MEDIUM
       fail-check: false

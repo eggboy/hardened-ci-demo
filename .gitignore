@@ -8,3 +8,4 @@ __pycache__/
 *.sqlite3
 .cm_project
 codemender.sarif
+demo-scenario.md
